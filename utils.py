@@ -1,10 +1,67 @@
 
+from math import floor
 from pydistsim.algorithm.node_wrapper import NodeAccess
+from pydistsim.message import Message
 from pydistsim.network import Node
 from pydistsim.logging import set_log_level, LogLevels, enable_logger, logger
+import random
+
 
 set_log_level(LogLevels.INFO)
 enable_logger()
+
+
+def error(method : str, message: Message):
+    msj = 'Unexpected message in ' + method + message.header + " from " + str(message.source) + " , content: " + str(message.data)
+    raise Exception(msj)
+
+
+def observe(node: NodeAccess):
+    d = random.random()
+    should_retreat = d < node.memory["decision_threshold"]
+    logger.info(
+        "[{}] Observes they should {}" , 
+        f"General {node.memory['unique_value']}", 
+        "retreat" if should_retreat else "attack"
+    )
+    if should_retreat:
+        return GeneralDecision.RETREAT
+    return GeneralDecision.ATTACK
+
+
+def decide(node: NodeAccess):
+    if len([1 for (id, decision) in node.memory["decisions"].items() if decision == GeneralDecision.ATTACK]) >= int((len(node.neighbors()) + 1)/2):
+        return GeneralDecision.ATTACK
+    return GeneralDecision.RETREAT
+ 
+
+
+def majority(values: dict):
+    # 1. The majority value among the vi if it exists, otherwise the value RETREAT;
+    vi = [v for v in values.values() if v is not None]
+    attackers = len([1 for v in vi if v == GeneralDecision.ATTACK])
+    if attackers > floor(len(vi)/2):
+        return GeneralDecision.ATTACK
+    return GeneralDecision.RETREAT
+
+def define_general_threshold(general : Node):
+    # Eventualmente puede establecerse un threshold especifico de acuerdo a las condiciones del nodo
+    return 0.5
+
+def send_with_check(node : NodeAccess, datos : any, dest : list | Node, msj_type : str, algorithm):
+    if msj_type == algorithm.default_params["Observation"]:
+        unique_value_sent = datos[1]
+        if node.memory["unique_value"] != unique_value_sent:
+            # 3.A2
+            raise ValueError(f"General {node.memory['unique_value']} tried to send inconsistent observation: {unique_value_sent}")
+    algorithm.send(
+        node, 
+        data=datos,
+        destination=dest,
+        header=msj_type
+    )
+    if algorithm.messages_counter:
+        algorithm.messages_counter += 1
 
 
 class Siege():
@@ -37,7 +94,6 @@ class Siege():
             self.attack_in_place()
 
 
-
 class GeneralDecision:
     RETREAT = "retreat" 
     ATTACK  = "attack"
@@ -51,11 +107,6 @@ class GeneralDecision:
         if decision == GeneralDecision.ATTACK:
             return GeneralDecision.RETREAT
 
-def define_general_threshold(general : Node):
-    # Eventualmente puede establecerse un threshold especifico de acuerdo a las condiciones del nodo
-    return 0.5
-
-
 class TraitorActions:
     @staticmethod
     def random_behaviour():
@@ -64,31 +115,36 @@ class TraitorActions:
     @staticmethod
     def init(node : NodeAccess, algorithm):
         logger.info("[{}] Is a traitor, so he sends the opposite decision", f"General {node.memory['unique_value']}")
-        lie = GeneralDecision.lie(node.memory["decisions"][node.memory["unique_value"]])
-        algorithm.send(
-            node, 
-            data=(lie, node.memory["unique_value"]),
-            destination=node.memory["commander"],
-            header=algorithm.default_params["Observation"]
-        )
+        if node.status == algorithm.Status.LIUTENANT:
+            lie = GeneralDecision.lie(node.memory["decisions"][node.memory["unique_value"]])
+            send_with_check(
+                node,
+                datos=(lie, node.memory["unique_value"]),
+                dest=node.memory["commander"],
+                msj_type=algorithm.default_params["Observation"],
+                algorithm=algorithm
+            )
 
     @staticmethod
     def commander_decision(node : NodeAccess, algorithm):
-        siege : Siege = node.memory["siege"]
+        siege : Siege = algorithm.siege
         half = int(len(node.neighbors())/2)
         attackers = random.sample(list(node.neighbors()), half)
         retreaters = [x for x in node.neighbors() if x not in attackers]
-        algorithm.send(
+        
+        send_with_check(
             node, 
-            data=GeneralDecision.ATTACK,
-            destination=attackers,
-            header=algorithm.default_params["Decision"]
+            datos=GeneralDecision.ATTACK,
+            dest=attackers,
+            msj_type=algorithm.default_params["Decision"],
+            algorithm=algorithm
         )
-        algorithm.send(
+        send_with_check(
             node, 
-            data=GeneralDecision.RETREAT,
-            destination=retreaters,
-            header=algorithm.default_params["Decision"]
+            datos=GeneralDecision.RETREAT,
+            dest=retreaters,
+            msj_type=algorithm.default_params["Decision"],
+            algorithm=algorithm
         )
         # Asumo que los traidores no atacan
         siege.retreat(node)
@@ -97,6 +153,6 @@ class TraitorActions:
     @staticmethod
     def respond_order(node : NodeAccess, algorithm):
         # Asumo que los traidores no atacan
-        siege : Siege = node.memory["siege"]
+        siege : Siege = algorithm.siege
         siege.retreat(node)
         node.status = algorithm.Status.RETREAT
