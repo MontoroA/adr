@@ -1,0 +1,11 @@
+no asumir total reliability
+que algo pueda fallar no significa que no pueda saber cuando
+    puedo indicar cuando se pierde
+    el algoritmo tiene que estar preparado para responder ante situaciones que no se espera
+        nosotros somos como Dios que generamos esas siutaciones
+    codigo: unlikely_random_lost_communication
+
+alarma con recursiva:
+    set_añarm
+    primer ejemplo de implementar algoritmo distribuido biblio: hay una alarma
+    https://pydistsim.readthedocs.io/tutorials/implementing.html
