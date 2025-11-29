@@ -20,19 +20,29 @@ def error(method : str, message: Message):
 
 #TODO Success only if all loyal liutenants attack
 class Siege():
+    class State(Enum):
+        ONGOING = "ongoing"
+        SUCCESSFUL = "successful"
+        FAILED = "failed"
+        ABORTED = "aborted"
+
     def __init__(self, n, attack_success_threshold = None):
         self.siegers = n
         self.attackers = 0
         self.retreaters = 0
+        self.state = self.State.ONGOING
         self.attack_success_threshold = attack_success_threshold if attack_success_threshold else n/2
 
     def attack_in_place(self):
         if self.attackers >= self.attack_success_threshold:
             logger.info("[{}] All loyal generals attacked. Successful siege", "Siege")
+            self.state = self.State.SUCCESSFUL
         elif self.attackers == 0:
             logger.info("[{}] All loyal generals retreat from siege", "Siege")
+            self.state = self.State.ABORTED
         else:
             logger.info("[{}] Only some generals attacked. Failed siege", "Siege")
+            self.state = self.State.FAILED
 
     def attack(self, node : NodeAccess):
         logger.info("[{}] Attacking", f"General {node.memory['unique_value']}")
@@ -88,7 +98,6 @@ def observe(node: NodeAccess):
 
 def majority(decisions: dict):
     # 1. The majority value among the vi if it exists, otherwise the value RETREAT;
-    print(decisions)
     values = decisions.values()  #if v is not None else GeneralDecision.RETREAT
     attackers = len([1 for v in values if v == GeneralDecision.ATTACK])
     if attackers > floor(len(values)/2):
@@ -114,12 +123,10 @@ def send_with_check(
         msj_type : str, 
         algorithm,
     ):
-    #FIXME implementar control. Corresponde que este en una interfaz al send?
+    #FIXME implementar control 3.A2. Corresponde que este en una interfaz al send?
     # if msj_type == algorithm.default_params["Value"]:
-    #     unique_value_sent = datos.path[-1]
-    #     if node.memory["unique_value"] != unique_value_sent:
-    #         # 3.A2
-    #         raise ValueError(f"General {node.memory['unique_value']} tried to send inconsistent observation: {unique_value_sent}")
+    #     if node.memory["unique_value"] != datos.path[-1]:
+    #         raise ValueError(f"General {node.memory['unique_value']} tried to send inconsistent observation: {datos.path[-1]}")
     algorithm.send(
         node, 
         data=datos,
