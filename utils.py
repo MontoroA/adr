@@ -31,7 +31,7 @@ class Siege():
         self.attackers = 0
         self.retreaters = 0
         self.state = self.State.ONGOING
-        self.attack_success_threshold = attack_success_threshold if attack_success_threshold else n/2
+        self.attack_success_threshold = attack_success_threshold if attack_success_threshold else n
 
     def attack_in_place(self):
         if self.attackers >= self.attack_success_threshold:
@@ -140,9 +140,9 @@ def send_with_check(
 class TraitorActions:
     @staticmethod
     def send_confusing_signal(general : NodeAccess, algorithm, datos : Data = None, sender = None):
-        half = int(len(general.neighbors())/2)
-        attackers = random.sample(list(general.neighbors()), half)
-        retreaters = [x for x in general.neighbors() if x not in attackers]     
+        half = int(len(general.memory["liutenants"])/2)
+        attackers = random.sample(list(general.memory["liutenants"]), half)
+        retreaters = [x for x in general.memory["liutenants"] if x not in attackers]     
         
         datosAttackers = Data(
             path = datos.path,
