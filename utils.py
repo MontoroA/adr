@@ -3,22 +3,20 @@ from math import floor
 from pydistsim.algorithm.node_wrapper import NodeAccess
 from pydistsim.message import Message
 from pydistsim.network import Node
-from pydistsim.logging import set_log_level, LogLevels, enable_logger, logger
+from pydistsim.logging import logger
 import random
 from enum import Enum
 
-set_log_level(LogLevels.INFO)
-enable_logger()
-
-
 
 def error(method : str, message: Message):
-    msj = 'Unexpected message in ' + method + message.header + " from " + str(message.source) + " , content: " + str(message.data)
+    msj = 'Unexpected message in ' + method + ' ' + message.header + " from " + str(message.source) + " , content: " + str(message.data)
     raise Exception(msj)
 
 
+######################################################################################################################################################
+#################################################        ORAL MESSAGES  UTILS             ############################################################
+######################################################################################################################################################
 
-#TODO Success only if all loyal liutenants attack
 class Siege():
     class State(Enum):
         ONGOING = "ongoing"
@@ -26,15 +24,23 @@ class Siege():
         FAILED = "failed"
         ABORTED = "aborted"
 
-    def __init__(self, n, attack_success_threshold = None):
+    def __init__(self, n, success_threshold = None, success_rate = 0.5):
         self.siegers = n
         self.attackers = 0
         self.retreaters = 0
         self.state = self.State.ONGOING
-        self.attack_success_threshold = attack_success_threshold if attack_success_threshold else n
+        self.success_threshold = success_threshold if success_threshold else n
+        self.success_rate = success_rate
+
+    def observe(self, node: NodeAccess):
+        d = random.random()
+        should_retreat = d < (1 - self.success_rate)
+        if should_retreat:
+            return GeneralDecision.RETREAT
+        return GeneralDecision.ATTACK
 
     def attack_in_place(self):
-        if self.attackers >= self.attack_success_threshold:
+        if self.attackers >= self.success_threshold:
             logger.info("[{}] All loyal generals attacked. Successful siege", "Siege")
             self.state = self.State.SUCCESSFUL
         elif self.attackers == 0:
@@ -44,15 +50,13 @@ class Siege():
             logger.info("[{}] Only some generals attacked. Failed siege", "Siege")
             self.state = self.State.FAILED
 
-    def attack(self, node : NodeAccess):
-        logger.info("[{}] Attacking", f"General {node.memory['unique_value']}")
+    def attack(self):
         self.siegers -= 1
         self.attackers += 1
         if self.siegers == 0:
             self.attack_in_place()
 
-    def retreat(self, node : NodeAccess):
-        logger.info("[{}] Retreating", f"General {node.memory['unique_value']}")
+    def retreat(self):
         self.siegers -= 1
         self.retreaters += 1
         if self.siegers == 0:
@@ -64,36 +68,8 @@ class GeneralDecision(Enum):
     RETREAT = "retreat" 
     ATTACK  = "attack"
     
-    @staticmethod
-    def lie(decision):
-        if decision is GeneralDecision.RETREAT:
-            return GeneralDecision.ATTACK
-        if decision is GeneralDecision.ATTACK:
-            return GeneralDecision.RETREAT
-        return None
-
     def __str__(self):
         return self.value
-
-
-def define_general_threshold(_ : Node):
-    # Eventualmente puede establecerse un threshold especifico de acuerdo a las condiciones del nodo
-    return 0.5
-
-
-
-def observe(node: NodeAccess):
-    d = random.random()
-    should_retreat = d < node.memory["observed_success_chance"]
-    logger.info(
-        "[{}] Observes they should {}" , 
-        f"General {node.memory['unique_value']}", 
-        "retreat" if should_retreat else "attack"
-    )
-    if should_retreat:
-        return GeneralDecision.RETREAT
-    return GeneralDecision.ATTACK
-
 
 
 def majority(decisions: dict):
@@ -171,3 +147,75 @@ class TraitorActions:
             msj_type=algorithm.default_params["Value"],
             algorithm=algorithm
         )
+
+    @staticmethod
+    def lie(decision):
+        if decision is GeneralDecision.RETREAT:
+            return GeneralDecision.ATTACK
+        if decision is GeneralDecision.ATTACK:
+            return GeneralDecision.RETREAT
+        return None
+    
+
+
+
+######################################################################################################################################################
+#################################################               2PC  UTILS                ############################################################
+######################################################################################################################################################
+
+class CrashBehavior():
+    @staticmethod
+    def crash_chance(node: NodeAccess):
+        # TODO fallos configurables
+        # return random.random()
+        return 0.1
+
+    @staticmethod
+    def determine_crash(node: NodeAccess):
+        d = random.random()
+        if d < node.memory["crash_chance"]:
+            return True
+        return False
+
+class Transaction():
+    class TransactionState(Enum):
+        ONGOING = "ongoing"
+        COMMITTED = "committed"
+        ABORTED = "aborted"
+        INCONSISTENT = "inconsistent"
+        DEADLOCK = "deadlock"
+
+    def __init__(self, n):
+        self.participants = n
+        self.committers = 0
+        self.aborters = 0
+        self.state = self.TransactionState.ONGOING
+
+    def result(self):
+        if self.committers == self.participants:
+            logger.info("[Transaction] All nodes committed the transaction. Consistency achieved")
+            self.state = self.TransactionState.COMMITTED
+        elif self.aborters == self.participants:
+            logger.info("[Transaction] All nodes aborted the transaction. Consistency preserved")
+            self.state = self.TransactionState.ABORTED
+        else:
+            logger.info("[Transaction] Only some nodes commited the transaction. Inconsistency occurred")
+            self.state = self.TransactionState.INCONSISTENT
+
+    def commit(self):
+        if self.state != self.TransactionState.ONGOING:
+            return
+        self.committers += 1
+        if self.committers + self.aborters == self.participants:
+            self.result()
+
+    def abort(self):
+        if self.state != self.TransactionState.ONGOING:
+            return
+        self.aborters += 1
+        if self.committers + self.aborters == self.participants:
+            self.result()
+
+    def declare_deadlock(self):
+        logger.info("[Transaction] Deadlock ocurred")
+        self.state = self.TransactionState.DEADLOCK

@@ -9,3 +9,12 @@ alarma con recursiva:
     set_añarm
     primer ejemplo de implementar algoritmo distribuido biblio: hay una alarma
     https://pydistsim.readthedocs.io/tutorials/implementing.html
+
+
+
+
+
+por cada OM(1) que me llega, implica que me van a llegar n-2 OM(0) de los otros nodos a los que el sender tmb les mando OM(1)
+De entre todos los valores en esos OM(0) + el OM(1) del sender, determino mi decision en ese caso base
+
+Luego, una vez que decidi todos mis OM(1), decido la llamada que recibi de OM(2) haciendo el majority entre esas decisiones 
