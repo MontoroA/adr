@@ -216,6 +216,9 @@ class Transaction():
         if self.committers + self.aborters == self.participants:
             self.result()
 
+    def crash(self):
+        self.participants -= 1
+
     def declare_deadlock(self):
         logger.info("[Transaction] Deadlock ocurred")
         self.state = self.TransactionState.DEADLOCK
