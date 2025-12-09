@@ -118,23 +118,20 @@ def send_with_check(
 
 class TraitorActions:
     @staticmethod
-    def send_confusing_signal(general : NodeAccess, algorithm, datos : Data = None, sender = None):
-        half = int(len(general.memory["liutenants"])/2)
-        attackers = random.sample(list(general.memory["liutenants"]), half)
-        retreaters = [x for x in general.memory["liutenants"] if x not in attackers]     
+    def send_confusing_signal(general : NodeAccess, algorithm, path : str, liutenants : set):
+        half = int(len(liutenants)/2)
+        attackers = random.sample(list(liutenants), half)
+        retreaters = [x for x in liutenants if x not in attackers]     
         
         datosAttackers = Data(
-            path = datos.path,
+            path = path,
             value = GeneralDecision.ATTACK
         )
         datosRetreaters = Data(
-            path = datos.path,
+            path = path,
             value = GeneralDecision.RETREAT
         )
 
-        if sender:
-            attackers = set(attackers) - {sender}
-            retreaters = set(retreaters) - {sender}
 
         send_with_check(
             general, 
