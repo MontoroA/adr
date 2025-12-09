@@ -12,6 +12,9 @@ def error(method : str, message: Message):
     msj = 'Unexpected message in ' + method + ' ' + message.header + " from " + str(message.source) + " , content: " + str(message.data)
     raise Exception(msj)
 
+def error(message: str):
+    raise Exception(message)
+
 
 ######################################################################################################################################################
 #################################################        ORAL MESSAGES  UTILS             ############################################################
@@ -74,9 +77,9 @@ class GeneralDecision(Enum):
 
 def majority(decisions: dict):
     # 1. The majority value among the vi if it exists, otherwise the value RETREAT;
-    values = decisions.values()  #if v is not None else GeneralDecision.RETREAT
-    attackers = len([1 for v in values if v == GeneralDecision.ATTACK])
-    if attackers > floor(len(values)/2):
+    attackers = len([1 for v in decisions if v == GeneralDecision.ATTACK])
+    retreaters = len(decisions) - attackers
+    if attackers > retreaters:
         return GeneralDecision.ATTACK
     return GeneralDecision.RETREAT
 
