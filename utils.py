@@ -12,7 +12,7 @@ def error(method : str, message: Message):
     msj = 'Unexpected message in ' + method + ' ' + message.header + " from " + str(message.source) + " , content: " + str(message.data)
     raise Exception(msj)
 
-def error(message: str):
+def raiseError(message: str):
     raise Exception(message)
 
 
@@ -183,7 +183,6 @@ class Transaction():
         COMMITTED = "committed"
         ABORTED = "aborted"
         INCONSISTENT = "inconsistent"
-        DEADLOCK = "deadlock"
 
     def __init__(self, n):
         self.participants = n
@@ -218,7 +217,3 @@ class Transaction():
 
     def crash(self):
         self.participants -= 1
-
-    def declare_deadlock(self):
-        logger.info("[Transaction] Deadlock ocurred")
-        self.state = self.TransactionState.DEADLOCK
