@@ -1,10 +1,14 @@
 
+####################              Laboratorio 2025                            ####################
+#################### Análisis y diseño de algoritmos distribuidos en redes    ####################
+####################          Andrés Montoro 5.169.779-1                      ####################
+
+
 from abc import ABC, abstractmethod
 from math import floor
 from pydistsim.algorithm.node_wrapper import NodeAccess
 from pydistsim.message import Message
 from pydistsim.network import Node
-from pydistsim.logging import logger
 import random
 from enum import Enum
 
@@ -27,14 +31,15 @@ class Siege():
         def __str__(self):
             return self.value
 
-    def __init__(self, n, logging, success_threshold = None, success_rate = 0.5):
+    def __init__(self, n, log, success_threshold = None, success_rate = 0.5):
         self.siegers = n
         self.attackers = 0
         self.retreaters = 0
+        self.crashers = 0
         self.state = self.State.ONGOING
         self.success_threshold = success_threshold if success_threshold else n
         self.success_rate = success_rate
-        self.logging = logging
+        self.log = log
 
     def observe(self, node: NodeAccess):
         d = random.random()
@@ -45,30 +50,32 @@ class Siege():
 
     def attack_in_place(self):
         if self.attackers >= self.success_threshold:
-            self.logging.append("[Siege] All loyal generals attacked. Successful siege")
+            self.log("[Siege] All loyal generals attacked. Successful siege")
             self.state = self.State.SUCCESSFUL
         elif self.attackers == 0:
-            self.logging.append("[Siege] All loyal generals retreat from siege")
+            self.log("[Siege] All loyal generals retreat from siege")
             self.state = self.State.ABORTED
         else:
-            self.logging.append("[Siege] Only some generals attacked. Failed siege")
+            self.log("[Siege] Only some generals attacked. Failed siege")
             self.state = self.State.FAILED
 
-    def attack(self, node: NodeAccess = None):
-        self.logging.append(f"[{node.memory['unique_value']}] Attacking")
+    def attack(self, node: NodeAccess):
+        self.log(f"[{node.memory['unique_value']}] Attacking")
         self.attackers += 1
-        if self.attackers + self.retreaters == self.siegers:
+        if self.attackers + self.retreaters + self.crashers == self.siegers:
             self.attack_in_place()
 
-    def retreat(self, node: NodeAccess = None):
-        self.logging.append(f"[General {node.memory['unique_value']}] Retreating")
+    def retreat(self, node: NodeAccess):
+        self.log(f"[General {node.memory['unique_value']}] Retreating")
         self.retreaters += 1
-        if self.attackers + self.retreaters == self.siegers:
+        if self.attackers + self.retreaters + self.crashers == self.siegers:
             self.attack_in_place()
 
-    def crash(self):
-        self.siegers -= 1
-
+    def crash(self, node: NodeAccess):
+        self.log(f"[General {node.memory['unique_value']}] Crashed")
+        self.crashers += 1
+        if self.attackers + self.retreaters + self.crashers == self.siegers:
+            self.attack_in_place()
 
 class GeneralDecision(Enum):
     RETREAT = "retreat" 
@@ -98,17 +105,13 @@ class Data:
 
 
 
-def send_with_check(
+def send_and_count(
         node : NodeAccess, 
         datos : Data, 
         dest : list | Node, 
         msj_type : str, 
         algorithm,
     ):
-    #FIXME implementar control 3.A2. Corresponde que este en una interfaz al send?
-    # if msj_type == algorithm.default_params["Value"]:
-    #     if node.memory["unique_value"] != datos.path[-1]:
-    #         raise ValueError(f"General {node.memory['unique_value']} tried to send inconsistent observation: {datos.path[-1]}")
     algorithm.send(
         node, 
         data=datos,
@@ -156,14 +159,14 @@ class ByzantineBehavior(FaultyBehavior):
             path = path,
             value = GeneralDecision.RETREAT
         )
-        send_with_check(
+        send_and_count(
             general, 
             datos=datosAttackers,
             dest=attackers,
             msj_type=algorithm.default_params["Value"],
             algorithm=algorithm
         )
-        send_with_check(
+        send_and_count(
             general, 
             datos=datosRetreaters,
             dest=retreaters,
@@ -180,7 +183,7 @@ class ByzantineBehavior(FaultyBehavior):
             path = path,
             value = lie
         )
-        send_with_check(
+        send_and_count(
             general, 
             datos=bromita,
             dest=liutenants,
@@ -192,9 +195,9 @@ class ByzantineBehavior(FaultyBehavior):
         pass
 
 class CrashBehavior(FaultyBehavior):
-    def __init__(self, node : NodeAccess, logging):
+    def __init__(self, node : NodeAccess, log):
         self.crash_chance = self.crash_chance()
-        self.logging = logging
+        self.log = log
 
     def send(self, node : NodeAccess, algorithm, header, to : set, chance = False):
         if not isinstance(to, set):
@@ -202,7 +205,7 @@ class CrashBehavior(FaultyBehavior):
         for neighbor in to:
             if(chance and self.determine_crash(node)):
                 return False
-            self.logging.append(f"[Node {node.memory['unique_value']}] Sending '{header}' through label {neighbor}")
+            self.log(f"[Node {node.memory['unique_value']}] Sending '{header}' to node {neighbor}")
             algorithm.send(
                 node, 
                 data=None,
