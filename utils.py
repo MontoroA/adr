@@ -3,7 +3,6 @@
 #################### Análisis y diseño de algoritmos distribuidos en redes    ####################
 ####################          Andrés Montoro 5.169.779-1                      ####################
 
-
 from abc import ABC, abstractmethod
 from math import floor
 from pydistsim.algorithm.node_wrapper import NodeAccess
@@ -12,6 +11,8 @@ from pydistsim.network import Node
 import random
 from enum import Enum
 
+# Estuve trabajando con la entrega hasta ultima hora, por lo que hay varios detalles que con mas tiempo se hubieran pulido
+# Sobre todo en la herencia de Behavior. parametros en ordenes distintos entre las subclases, nombres distintos que implican kwarg, etc
 
 def error(method : str, message: Message):
     msj = 'Unexpected message in ' + method + ' ' + message.header + " from " + str(message.source) + " , content: " + str(message.data)
@@ -103,6 +104,9 @@ class Data:
     def __str__(self):
         return f"Data: {self.path}, {self.value}"
 
+class EncryptedData():
+    def __init__(self, value):
+        self.value = value
 
 
 def send_and_count(
@@ -111,6 +115,7 @@ def send_and_count(
         dest : list | Node, 
         msj_type : str, 
         algorithm,
+        msj_counter = True
     ):
     algorithm.send(
         node, 
@@ -118,18 +123,45 @@ def send_and_count(
         destination=dest,
         header=msj_type
     )
-    algorithm.messages_counter += 1
+    if msj_counter:
+        algorithm.messages_counter += 1
 
 
 
-class FaultyBehavior(ABC):
+class Behavior(ABC):
     @abstractmethod
     def send(*args, **kwargs):
         pass
 
-    
 
-class ByzantineBehavior(FaultyBehavior):
+
+class NonFaultyBehavior(Behavior):
+    def __init__(self):
+        pass
+
+    def send(
+            self, 
+            node : NodeAccess, 
+            algorithm, 
+            header, 
+            destination
+        ):
+        private_key = node.memory["private_key"]
+        firma = b"My signature"
+        signature = private_key.sign(firma)
+        msj = EncryptedData(signature)
+        send_and_count(
+            node,
+            datos = msj,
+            dest = destination,
+            msj_type = header,
+            algorithm = algorithm,
+            msj_counter = False
+        )
+
+
+
+class ByzantineBehavior(Behavior):
     class Behavior(Enum):
         LIER = "lier"
         QUIET = "quiet"
@@ -138,18 +170,46 @@ class ByzantineBehavior(FaultyBehavior):
     def __init__(self, behavior : Behavior):
         self.behavior = behavior
 
-    def send(self, general : NodeAccess, algorithm, path : str, liutenants : set, rcvd_decision : GeneralDecision):
+    def send(
+        self, 
+        node : NodeAccess, 
+        algorithm, 
+        header, 
+        destination : set, 
+        path : str = None, 
+        rcvd_decision : GeneralDecision = None
+        ):
         if self.behavior == ByzantineBehavior.Behavior.LIER:
-            self.lie(general, algorithm, path, liutenants, rcvd_decision)
+            self.lie(
+                node, 
+                algorithm, 
+                destination, 
+                header, 
+                path, 
+                rcvd_decision
+            )
         elif self.behavior == ByzantineBehavior.Behavior.QUIET:
             self.quiet()
         elif self.behavior == ByzantineBehavior.Behavior.CONFUSER:
-            self.confuse(general, algorithm, path, liutenants)
+            self.confuse(
+                node, 
+                algorithm, 
+                header, 
+                destination, 
+                path
+            )
 
-    def confuse(self, general : NodeAccess, algorithm, path : str, liutenants : set):
-        half = int(len(liutenants)/2)
-        attackers = random.sample(list(liutenants), half)
-        retreaters = [x for x in liutenants if x not in attackers]     
+    def confuse(
+            self, 
+            node : NodeAccess, 
+            algorithm, 
+            header, 
+            destination : set,
+            path : str = None
+        ):
+        half = int(len(destination)/2)
+        attackers = random.sample(list(destination), half)
+        retreaters = [x for x in destination if x not in attackers]     
         
         datosAttackers = Data(
             path = path,
@@ -160,25 +220,35 @@ class ByzantineBehavior(FaultyBehavior):
             value = GeneralDecision.RETREAT
         )
         send_and_count(
-            general, 
+            node=node, 
             datos=datosAttackers,
             dest=attackers,
-            msj_type=algorithm.default_params["Value"],
+            msj_type=header,
             algorithm=algorithm
         )
         send_and_count(
-            general, 
+            node=node, 
             datos=datosRetreaters,
             dest=retreaters,
-            msj_type=algorithm.default_params["Value"],
+            msj_type=header,
             algorithm=algorithm
         )
 
-    def lie(self, general : NodeAccess, algorithm, path : str, liutenants : set, rcvd_decision : GeneralDecision):
+    def lie(
+            self, 
+            general : NodeAccess, 
+            algorithm, 
+            destination : set, 
+            header, 
+            path : str = None, 
+            rcvd_decision : GeneralDecision = None
+        ):
         if rcvd_decision is GeneralDecision.RETREAT:
             lie = GeneralDecision.ATTACK
-        if rcvd_decision is GeneralDecision.ATTACK:
+        elif rcvd_decision is GeneralDecision.ATTACK:
             lie = GeneralDecision.RETREAT
+        else:
+            lie = GeneralDecision.ATTACK
         bromita = Data(
             path = path,
             value = lie
@@ -186,23 +256,30 @@ class ByzantineBehavior(FaultyBehavior):
         send_and_count(
             general, 
             datos=bromita,
-            dest=liutenants,
-            msj_type=algorithm.default_params["Value"],
+            dest=destination,
+            msj_type=header,
             algorithm=algorithm
         )
         
     def quiet():
         pass
 
-class CrashBehavior(FaultyBehavior):
+class CrashBehavior(Behavior):
     def __init__(self, node : NodeAccess, log):
         self.crash_chance = self.crash_chance()
         self.log = log
 
-    def send(self, node : NodeAccess, algorithm, header, to : set, chance = False):
-        if not isinstance(to, set):
-            to = {to}
-        for neighbor in to:
+    def send(
+            self, 
+            node : NodeAccess, 
+            algorithm, 
+            header, 
+            destination, 
+            chance = False, 
+        ):
+        if not isinstance(destination, set):
+            destination = {destination}
+        for neighbor in destination:
             if(chance and self.determine_crash(node)):
                 return False
             self.log(f"[Node {node.memory['unique_value']}] Sending '{header}' to node {neighbor}")
